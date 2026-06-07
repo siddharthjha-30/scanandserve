@@ -8,6 +8,21 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
+const allowedCheckoutOrigins = (process.env.ALLOWED_CHECKOUT_ORIGINS || 'https://example.com,http://localhost:5500')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+function sanitizeRedirectUrl(rawUrl, fallbackPath) {
+  if (!rawUrl) return `${allowedCheckoutOrigins[0]}${fallbackPath}`;
+  try {
+    const parsed = new URL(rawUrl);
+    if (allowedCheckoutOrigins.includes(parsed.origin)) return parsed.toString();
+  } catch (_err) {
+    logger.warn('Invalid checkout redirect URL', { rawUrl });
+  }
+  return `${allowedCheckoutOrigins[0]}${fallbackPath}`;
+}
 
 exports.createCheckoutSession = onRequest(async (req, res) => {
   if (req.method !== 'POST') {
@@ -27,8 +42,8 @@ exports.createCheckoutSession = onRequest(async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: req.body.successUrl || 'https://example.com/success',
-      cancel_url: req.body.cancelUrl || 'https://example.com/cancel',
+      success_url: sanitizeRedirectUrl(req.body.successUrl, '/success'),
+      cancel_url: sanitizeRedirectUrl(req.body.cancelUrl, '/cancel'),
       client_reference_id: req.body.restaurantId || null,
       metadata: {
         restaurant_id: String(req.body.restaurantId || ''),

@@ -6,6 +6,14 @@ import { collection, getDocs, query, where, doc, getDoc } from 'https://www.gsta
 const output = document.getElementById('bill-output');
 const orderId = getLastOrderId();
 
+function renderBillJson(value) {
+  output.textContent = '';
+  const pre = document.createElement('pre');
+  pre.className = 'text-xs';
+  pre.textContent = JSON.stringify(value, null, 2);
+  output.appendChild(pre);
+}
+
 async function loadBill() {
   if (!orderId) {
     output.textContent = 'No order found.';
@@ -15,7 +23,7 @@ async function loadBill() {
   if (orderId.startsWith('L')) {
     const localOrder = getLocalOrder(orderId);
     const bill = buildBill({ id: orderId, ...(localOrder || {}) }, localOrder?.items || []);
-    output.innerHTML = `<pre class="text-xs">${JSON.stringify({ offline: true, ...bill }, null, 2)}</pre>`;
+    renderBillJson({ offline: true, ...bill });
     return;
   }
 
@@ -28,7 +36,7 @@ async function loadBill() {
   const itemsSnapshot = await getDocs(query(collection(db, 'order_items'), where('order_id', '==', orderId)));
   const items = itemsSnapshot.docs.map((d) => d.data());
   const bill = buildBill({ id: orderDoc.id, ...orderDoc.data() }, items);
-  output.innerHTML = `<pre class="text-xs">${JSON.stringify(bill, null, 2)}</pre>`;
+  renderBillJson(bill);
 }
 
 loadBill().catch(() => {
