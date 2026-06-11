@@ -1,17 +1,30 @@
 import {
-  signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  doc,
+  getDoc,
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
 
-export const signInEmail = (email, pw) => signInWithEmailAndPassword(auth, email, pw);
-export const signUpEmail = (email, pw) => createUserWithEmailAndPassword(auth, email, pw);
-export const signInGoogle = () => signInWithPopup(auth, new GoogleAuthProvider());
+export const signInEmail = (email, pw) =>
+  signInWithEmailAndPassword(auth, email, pw);
+export const signUpEmail = (email, pw) =>
+  createUserWithEmailAndPassword(auth, email, pw);
+export const signInGoogle = () =>
+  signInWithPopup(auth, new GoogleAuthProvider());
 export const signOutUser = () => signOut(auth);
 
 export function onUser(cb) {
-  if (!auth) { cb(null); return () => {}; }
+  if (!auth) {
+    cb(null);
+    return () => {};
+  }
   return onAuthStateChanged(auth, cb);
 }
 
@@ -19,7 +32,7 @@ export async function loadUserRole(uid) {
   if (!db) return null;
   const snap = await getDoc(doc(db, "users", uid));
   if (!snap.exists()) return null;
-  
+
   const data = snap.data();
   // Fetch restaurant name if restaurant_id exists
   if (data.restaurant_id) {
@@ -32,7 +45,7 @@ export async function loadUserRole(uid) {
       console.warn("Failed to load restaurant name", e);
     }
   }
-  
+
   return data;
 }
 

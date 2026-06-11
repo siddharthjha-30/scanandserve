@@ -115,7 +115,9 @@
           si.classList.remove("hidden");
           document.getElementById("who-email").textContent = u.email;
           const role = await loadUserRole(u.uid);
-          const restaurantDisplay = role?.restaurant_name ? role.restaurant_name : (role?.restaurant_id || "Unknown");
+          const restaurantDisplay = role?.restaurant_name
+            ? role.restaurant_name
+            : role?.restaurant_id || "Unknown";
           document.getElementById("role-info").textContent = role
             ? `Restaurant: ${restaurantDisplay} · Role: ${role.role}`
             : "No role configured. Create a users/{uid} doc with { restaurant_id, role }.";
