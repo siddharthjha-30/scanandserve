@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cart · Scan &amp; Serve</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50 pb-24">
+  <header class="sticky top-0 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+    <a href="/customer/menu.html" class="text-sm text-slate-600">&larr; Menu</a>
+    <div class="font-bold">Your cart</div>
+    <div class="w-12"></div>
+  </header>
+  <main class="p-4 space-y-4">
+    <div id="items" class="space-y-2"></div>
+
+    <section class="bg-white rounded-xl border border-slate-200 p-4">
+      <label class="block text-sm font-medium text-slate-700">Tip</label>
+      <div id="tips" class="flex gap-2 mt-2 flex-wrap"></div>
+      <label class="block text-sm font-medium text-slate-700 mt-4">Your name (optional)</label>
+      <input id="name" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="So we know who ordered" />
+    </section>
+
+    <section id="totals" class="bg-white rounded-xl border border-slate-200 p-4 space-y-1 text-sm"></section>
+
+    <a id="checkout" href="/customer/checkout.html" class="block text-center bg-emerald-600 text-white font-semibold py-3 rounded-xl">Place order</a>
+  </main>
+
+  <script type="module">
+    import { getCart, setCart, updateQty, getTipPct, setTipPct, getCachedSettings } from "/shared/state.js";
+    import { computeTotals } from "/shared/cart.js";
+    import { money } from "/shared/ui.js";
+
+    const settings = getCachedSettings();
+    const currency = settings.currency;
+
+    function render() {
+      const cart = getCart();
+      const itemsEl = document.getElementById("items");
+      if (cart.length === 0) {
+        itemsEl.innerHTML = `<div class="text-center text-slate-500 py-8 bg-white rounded-xl border border-slate-200">Cart is empty.</div>`;
+        document.getElementById("checkout").classList.add("pointer-events-none","opacity-50");
+      } else {
+        document.getElementById("checkout").classList.remove("pointer-events-none","opacity-50");
+        itemsEl.innerHTML = cart.map(i => `
+          <div class="bg-white rounded-xl border border-slate-200 p-3 flex justify-between items-center gap-3">
+            <div>
+              <div class="font-medium">${i.name}</div>
+              <div class="text-xs text-slate-500">${money(i.price, currency)} each</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button data-id="${i.menu_item_id}" data-d="-1" class="qty w-8 h-8 rounded-lg border border-slate-300">−</button>
+              <div class="w-6 text-center">${i.qty}</div>
+              <button data-id="${i.menu_item_id}" data-d="1" class="qty w-8 h-8 rounded-lg border border-slate-300">+</button>
+            </div>
+          </div>`).join("");
+        itemsEl.querySelectorAll("button.qty").forEach(b => b.addEventListener("click", () => {
+          const cur = getCart().find(c => c.menu_item_id === b.dataset.id);
+          if (!cur) return;
+          updateQty(b.dataset.id, cur.qty + Number(b.dataset.d));
+          render();
+        }));
+      }
+
+      const tipPct = getTipPct();
+      const tipsEl = document.getElementById("tips");
+      tipsEl.innerHTML = [0,5,10,15,20].map(p => `
+        <button data-p="${p}" class="tip px-3 py-1.5 rounded-lg border text-sm ${p===tipPct?'bg-slate-900 text-white border-slate-900':'border-slate-300'}">${p}%</button>
+      `).join("");
+      tipsEl.querySelectorAll("button.tip").forEach(b => b.addEventListener("click", () => {
+        setTipPct(Number(b.dataset.p));
+        render();
+      }));
+
+      const totals = computeTotals(cart, settings, tipPct);
+      document.getElementById("totals").innerHTML = `
+        <div class="flex justify-between"><span>Subtotal</span><span>${money(totals.subtotal, currency)}</span></div>
+        ${settings.service_charge_pct ? `<div class="flex justify-between text-slate-600"><span>Service (${settings.service_charge_pct}%)</span><span>${money(totals.service_charge, currency)}</span></div>` : ""}
+        ${tipPct ? `<div class="flex justify-between text-slate-600"><span>Tip (${tipPct}%)</span><span>${money(totals.tip, currency)}</span></div>` : ""}
+        ${totals.rounding_adjustment ? `<div class="flex justify-between text-slate-600"><span>Rounding</span><span>${money(totals.rounding_adjustment, currency)}</span></div>` : ""}
+        <div class="flex justify-between font-bold text-base pt-2 border-t border-slate-200"><span>Total</span><span>${money(totals.total, currency)}</span></div>`;
+    }
+
+    document.getElementById("name").addEventListener("input", (e) => {
+      try { localStorage.setItem("ss.customer_name", JSON.stringify(e.target.value)); } catch {}
+    });
+    try { document.getElementById("name").value = JSON.parse(localStorage.getItem("ss.customer_name") || '""'); } catch {}
+
+    render();
+  </script>
+</body>
+</html>

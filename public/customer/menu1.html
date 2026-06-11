@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Menu · Scan &amp; Serve</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-slate-50 pb-24">
+    <header
+      class="sticky top-0 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between"
+    >
+      <div>
+        <div id="restaurant-name" class="font-bold text-slate-900">Menu</div>
+        <div id="table-info" class="text-xs text-slate-500"></div>
+      </div>
+      <a
+        href="/customer/cart.html"
+        class="relative bg-slate-900 text-white px-4 py-2 rounded-lg text-sm"
+      >
+        Cart <span id="cart-count" class="ml-1 font-semibold">0</span>
+      </a>
+    </header>
+    <main id="menu" class="p-4 space-y-6">
+      <div class="text-center text-slate-500 py-12">Loading menu…</div>
+    </main>
+    <script type="module">
+      import { requireRestaurant } from "/shared/tenancy.js";
+      import { loadMenu, loadRestaurantSettings } from "/shared/menu.js";
+      import { addToCart, getCart, getTableNumber } from "/shared/state.js";
+      import { money, toast } from "/shared/ui.js";
+
+      const restaurantId = requireRestaurant();
+      document.getElementById("table-info").textContent =
+        `Table ${getTableNumber() ?? "—"}`;
+
+      // Returns the count of UNIQUE products (distinct menu_item_id entries).
+      // Works whether getCart() stores one entry per add (duplicate rows)
+      // OR one entry per product with a qty field.
+      const getUniqueProductCount = () => {
+        const cart = getCart();
+        const uniqueIds = new Set(cart.map((item) => item.menu_item_id));
+        return uniqueIds.size;
+      };
+
+      const refreshCount = () => {
+        document.getElementById("cart-count").textContent =
+          getUniqueProductCount();
+      };
+      refreshCount();
+
+      try {
+        const restaurant = await loadRestaurantSettings(restaurantId);
+        if (restaurant?.name)
+          document.getElementById("restaurant-name").textContent =
+            restaurant.name;
+        const currency = restaurant?._settings?.currency ?? "USD";
+        const { categories, items } = await loadMenu(restaurantId);
+        const main = document.getElementById("menu");
+
+        if (items.length === 0) {
+          main.innerHTML = `<div class="text-center text-slate-500 py-12">No menu items yet.</div>`;
+        } else {
+          const buckets = new Map();
+          for (const c of categories)
+            buckets.set(c.id, { name: c.name, items: [] });
+          buckets.set("_other", { name: "Other", items: [] });
+          for (const it of items) {
+            const key = buckets.has(it.category_id) ? it.category_id : "_other";
+            buckets.get(key).items.push(it);
+          }
+          main.innerHTML = "";
+          for (const [, group] of buckets) {
+            if (group.items.length === 0) continue;
+            const section = document.createElement("section");
+            section.innerHTML = `
+            <h2 class="text-lg font-semibold text-slate-900 mb-2">${group.name}</h2>
+            <div class="space-y-2">${group.items
+              .map(
+                (it) => `
+              <div class="bg-white rounded-xl border border-slate-200 p-3 flex justify-between items-start gap-3">
+                <div class="flex-1">
+                  <div class="font-medium text-slate-900">${it.name}</div>
+                  ${it.description ? `<div class="text-sm text-slate-500">${it.description}</div>` : ""}
+                  <div class="text-sm font-semibold text-slate-900 mt-1">${money(it.price, currency)}</div>
+                </div>
+                <button data-id="${it.id}" data-name="${it.name}" data-price="${it.price}" class="add bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm">Add</button>
+              </div>`,
+              )
+              .join("")}</div>`;
+            main.appendChild(section);
+          }
+          main.querySelectorAll("button.add").forEach((btn) => {
+            // Mark button as "Added" if item already exists in cart
+            const isInCart = () =>
+              getCart().some((item) => item.menu_item_id === btn.dataset.id);
+
+            const syncBtn = () => {
+              if (isInCart()) {
+                btn.textContent = "✓ Added";
+                btn.classList.remove("bg-emerald-600");
+                btn.classList.add("bg-slate-700");
+              } else {
+                btn.textContent = "Add";
+                btn.classList.remove("bg-slate-700");
+                btn.classList.add("bg-emerald-600");
+              }
+            };
+            syncBtn(); // Set initial state on page load
+
+            btn.addEventListener("click", () => {
+              addToCart({
+                menu_item_id: btn.dataset.id,
+                name: btn.dataset.name,
+                price: Number(btn.dataset.price),
+                qty: 1,
+              });
+              syncBtn();
+              refreshCount();
+              toast(`${btn.dataset.name} added`, "success");
+            });
+          });
+        }
+      } catch (e) {
+        console.error(e);
+        document.getElementById("menu").innerHTML =
+          `<div class="text-center text-red-600 py-8">Failed to load menu. ${e.message}</div>`;
+      }
+    </script>
+  </body>
+</html>

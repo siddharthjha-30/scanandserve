@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Placing order…</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+  <div id="status" class="text-center max-w-sm">
+    <div class="text-lg font-semibold text-slate-900">Placing your order…</div>
+    <div class="text-sm text-slate-500 mt-2">Please hold on.</div>
+  </div>
+  <script type="module">
+    import { getCart, clearCart, getTipPct, getCachedSettings, setLastOrderId, getRestaurantId, getTableNumber } from "/shared/state.js";
+    import { computeTotals } from "/shared/cart.js";
+    import { placeOrder } from "/shared/checkout.js";
+
+    const cart = getCart();
+    if (cart.length === 0) { window.location.href = "/customer/menu.html"; }
+    const settings = getCachedSettings();
+    const totals = computeTotals(cart, settings, getTipPct());
+    let customerName = null;
+    try { customerName = JSON.parse(localStorage.getItem("ss.customer_name") || "null"); } catch {}
+
+    const result = await placeOrder({
+      restaurantId: getRestaurantId(),
+      tableNumber: getTableNumber(),
+      customerName,
+      items: cart,
+      totals,
+    });
+    setLastOrderId(result.id);
+    clearCart();
+    window.location.href = `/customer/track.html?id=${encodeURIComponent(result.id)}`;
+  </script>
+</body>
+</html>

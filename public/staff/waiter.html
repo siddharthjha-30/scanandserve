@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Waiter · Scan &amp; Serve</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-100">
+  <header class="bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center">
+    <div class="font-bold">Floor view — ongoing orders</div>
+    <div class="flex items-center gap-3 text-sm">
+      <span id="who" class="text-slate-500"></span>
+      <button id="signout" class="text-slate-600 underline">Sign out</button>
+    </div>
+  </header>
+  <main class="p-4">
+    <div id="orders" class="space-y-2 max-w-3xl mx-auto">Loading…</div>
+  </main>
+
+  <script type="module">
+    import { onUser, loadUserRole, signOutUser } from "/shared/auth.js";
+    import { db } from "/shared/firebase.js";
+    import { collection, query, where, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { money } from "/shared/ui.js";
+
+    document.getElementById("signout").onclick = () => signOutUser().then(() => location.href = "/admin/index.html");
+
+    onUser(async (u) => {
+      if (!u) { location.href = "/admin/index.html"; return; }
+      const role = await loadUserRole(u.uid);
+      if (!role?.restaurant_id) { document.body.innerHTML = "<div class='p-8'>No restaurant assigned.</div>"; return; }
+      document.getElementById("who").textContent = `${u.email} · ${role.role}`;
+
+      const q = query(collection(db, "orders"),
+        where("restaurant_id", "==", role.restaurant_id),
+        where("status", "in", ["new", "preparing", "ready", "served"]));
+
+      onSnapshot(q, (snap) => {
+        const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.table_number ?? 0) - (b.table_number ?? 0));
+        const root = document.getElementById("orders");
+        if (orders.length === 0) { root.innerHTML = `<div class="text-slate-500 text-center py-12">No ongoing orders.</div>`; return; }
+        root.innerHTML = orders.map(o => `
+          <div class="bg-white rounded-xl border border-slate-200 p-4 flex justify-between items-center">
+            <div>
+              <div class="font-bold text-slate-900">Table ${o.table_number ?? '?'} · #${o.display_number ?? o.id.slice(0,5)}</div>
+              <div class="text-sm text-slate-600">${o.customer_name || 'Guest'} · <span class="font-medium">${o.status}</span></div>
+              <div class="text-xs text-slate-500 mt-1">${money(o.totals?.total ?? 0, o.totals?.currency ?? 'USD')}</div>
+            </div>
+            <div class="flex gap-2">
+              ${o.status === 'ready' ? `<button data-id="${o.id}" data-to="served" class="adv bg-slate-700 text-white text-sm px-3 py-1.5 rounded-lg">Served</button>` : ""}
+              ${o.status === 'served' ? `<button data-id="${o.id}" data-to="paid" class="adv bg-emerald-600 text-white text-sm px-3 py-1.5 rounded-lg">Mark paid</button>` : ""}
+            </div>
+          </div>`).join("");
+        root.querySelectorAll("button.adv").forEach(b => b.onclick = () => updateDoc(doc(db, "orders", b.dataset.id), { status: b.dataset.to }));
+      });
+    });
+  </script>
+</body>
+</html>

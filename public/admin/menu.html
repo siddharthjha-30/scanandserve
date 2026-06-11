@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Menu admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50">
+  <header class="bg-white border-b border-slate-200 px-4 py-3 flex justify-between">
+    <div class="font-bold">Menu admin</div>
+    <a href="/admin/index.html" class="text-sm text-slate-600">&larr; Back</a>
+  </header>
+  <main class="p-4 max-w-3xl mx-auto space-y-6">
+    <section class="bg-white rounded-xl border border-slate-200 p-4">
+      <h2 class="font-semibold">Categories</h2>
+      <div class="flex gap-2 mt-2">
+        <input id="cat-name" placeholder="Category name" class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        <button id="add-cat" class="bg-slate-900 text-white px-4 rounded-lg text-sm">Add</button>
+      </div>
+      <ul id="cats" class="mt-3 space-y-1 text-sm"></ul>
+    </section>
+
+    <section class="bg-white rounded-xl border border-slate-200 p-4">
+      <h2 class="font-semibold">Menu items</h2>
+      <div class="grid grid-cols-2 gap-2 mt-2">
+        <input id="i-name" placeholder="Name" class="border border-slate-300 rounded-lg px-3 py-2 text-sm col-span-2" />
+        <input id="i-price" type="number" step="0.01" placeholder="Price" class="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        <select id="i-cat" class="border border-slate-300 rounded-lg px-3 py-2 text-sm"></select>
+        <input id="i-desc" placeholder="Description" class="border border-slate-300 rounded-lg px-3 py-2 text-sm col-span-2" />
+        <input id="i-img" placeholder="Image URL (optional)" class="border border-slate-300 rounded-lg px-3 py-2 text-sm col-span-2" />
+        <button id="add-item" class="bg-slate-900 text-white rounded-lg py-2 text-sm col-span-2">Add item</button>
+      </div>
+      <ul id="items" class="mt-4 divide-y divide-slate-200 text-sm"></ul>
+    </section>
+  </main>
+
+  <script type="module">
+    import { onUser, loadUserRole } from "/shared/auth.js";
+    import { db } from "/shared/firebase.js";
+    import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    let restaurantId = null;
+    let categories = [];
+
+    onUser(async (u) => {
+      if (!u) { location.href = "/admin/index.html"; return; }
+      const role = await loadUserRole(u.uid);
+      if (!role?.restaurant_id) { document.body.innerHTML = "<div class='p-8'>No restaurant assigned.</div>"; return; }
+      restaurantId = role.restaurant_id;
+
+      onSnapshot(query(collection(db, "categories"), where("restaurant_id", "==", restaurantId)), (snap) => {
+        categories = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        document.getElementById("cats").innerHTML = categories.map(c => `
+          <li class="flex justify-between"><span>${c.name}</span><button data-del="${c.id}" class="del-cat text-red-600">delete</button></li>
+        `).join("");
+        document.getElementById("i-cat").innerHTML = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+        document.querySelectorAll("button.del-cat").forEach(b => b.onclick = () => deleteDoc(doc(db, "categories", b.dataset.del)));
+      });
+
+      onSnapshot(query(collection(db, "menu_items"), where("restaurant_id", "==", restaurantId)), (snap) => {
+        const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        document.getElementById("items").innerHTML = items.map(it => `
+          <li class="py-2 flex justify-between items-center gap-2">
+            <div>
+              <div class="font-medium">${it.name} <span class="text-slate-400 text-xs">${it.category_name ?? ''}</span></div>
+              <div class="text-xs text-slate-500">$${Number(it.price).toFixed(2)} · ${it.description ?? ''}</div>
+            </div>
+            <div class="flex gap-2">
+              <button data-toggle="${it.id}" data-on="${it.available !== false}" class="tog text-xs underline">${it.available !== false ? 'hide' : 'show'}</button>
+              <button data-del="${it.id}" class="del-item text-red-600 text-xs">delete</button>
+            </div>
+          </li>`).join("");
+        document.querySelectorAll("button.del-item").forEach(b => b.onclick = () => deleteDoc(doc(db, "menu_items", b.dataset.del)));
+        document.querySelectorAll("button.tog").forEach(b => b.onclick = () => updateDoc(doc(db, "menu_items", b.dataset.toggle), { available: b.dataset.on !== "true" }));
+      });
+    });
+
+    document.getElementById("add-cat").onclick = async () => {
+      const name = document.getElementById("cat-name").value.trim();
+      if (!name || !restaurantId) return;
+      await addDoc(collection(db, "categories"), { restaurant_id: restaurantId, name, sort_order: 0 });
+      document.getElementById("cat-name").value = "";
+    };
+
+    document.getElementById("add-item").onclick = async () => {
+      const name = document.getElementById("i-name").value.trim();
+      const price = Number(document.getElementById("i-price").value);
+      const cat = document.getElementById("i-cat").value;
+      const desc = document.getElementById("i-desc").value;
+      const img = document.getElementById("i-img").value;
+      if (!name || !cat) return;
+      const catName = categories.find(c => c.id === cat)?.name ?? "";
+      await addDoc(collection(db, "menu_items"), {
+        restaurant_id: restaurantId, name, price, description: desc, image_url: img,
+        category_id: cat, category_name: catName, available: true,
+      });
+      ["i-name","i-price","i-desc","i-img"].forEach(id => document.getElementById(id).value = "");
+    };
+  </script>
+</body>
+</html>

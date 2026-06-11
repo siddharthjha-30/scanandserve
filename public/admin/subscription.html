@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Subscription</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50">
+  <header class="bg-white border-b border-slate-200 px-4 py-3 flex justify-between">
+    <div class="font-bold">Subscription</div>
+    <a href="/admin/index.html" class="text-sm text-slate-600">&larr; Back</a>
+  </header>
+  <main class="p-6 max-w-md mx-auto">
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+      <h2 class="font-bold text-lg">Choose a plan</h2>
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <button data-plan="basic" class="plan border border-slate-300 rounded-lg p-3 text-left">
+          <div class="font-semibold">Basic</div><div class="text-slate-500 text-xs">Single restaurant</div>
+        </button>
+        <button data-plan="pro" class="plan border border-slate-300 rounded-lg p-3 text-left">
+          <div class="font-semibold">Pro</div><div class="text-slate-500 text-xs">Multi-location, analytics</div>
+        </button>
+      </div>
+      <div id="msg" class="text-sm text-slate-500"></div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { onUser, loadUserRole } from "/shared/auth.js";
+    import { functions } from "/shared/firebase.js";
+    import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+
+    let user, role;
+    onUser(async (u) => { user = u; if (u) role = await loadUserRole(u.uid); });
+
+    document.querySelectorAll("button.plan").forEach(b => b.onclick = async () => {
+      const msg = document.getElementById("msg");
+      if (!user || !role) { msg.textContent = "Please sign in first."; return; }
+      if (!functions) { msg.textContent = "Firebase not configured. Fill in shared/firebase.js."; return; }
+      msg.textContent = "Creating checkout session…";
+      try {
+        const call = httpsCallable(functions, "createCheckoutSession");
+        const { data } = await call({ planId: b.dataset.plan, restaurantId: role.restaurant_id });
+        if (data?.url) window.location.href = data.url;
+        else msg.textContent = "No checkout URL returned.";
+      } catch (e) {
+        msg.textContent = "Error: " + e.message;
+      }
+    });
+  </script>
+</body>
+</html>

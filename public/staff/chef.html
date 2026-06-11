@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kitchen · Scan &amp; Serve</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-100">
+  <header class="bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center">
+    <div class="font-bold">Kitchen board</div>
+    <div class="flex items-center gap-3 text-sm">
+      <span id="who" class="text-slate-500"></span>
+      <button id="signout" class="text-slate-600 underline">Sign out</button>
+    </div>
+  </header>
+  <main class="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+    <section data-status="new"><h2 class="font-semibold text-slate-700 mb-2">New</h2><div id="col-new" class="space-y-2"></div></section>
+    <section data-status="preparing"><h2 class="font-semibold text-slate-700 mb-2">Preparing</h2><div id="col-preparing" class="space-y-2"></div></section>
+    <section data-status="ready"><h2 class="font-semibold text-slate-700 mb-2">Ready</h2><div id="col-ready" class="space-y-2"></div></section>
+  </main>
+
+  <script type="module">
+    import { onUser, loadUserRole, signOutUser } from "/shared/auth.js";
+    import { db } from "/shared/firebase.js";
+    import { collection, query, where, onSnapshot, doc, updateDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    document.getElementById("signout").onclick = () => signOutUser().then(() => location.href = "/admin/index.html");
+
+    onUser(async (u) => {
+      if (!u) { location.href = "/admin/index.html"; return; }
+      const role = await loadUserRole(u.uid);
+      if (!role?.restaurant_id) { document.body.innerHTML = "<div class='p-8'>No restaurant assigned to this account.</div>"; return; }
+      document.getElementById("who").textContent = `${u.email} · ${role.role}`;
+
+      const q = query(collection(db, "orders"),
+        where("restaurant_id", "==", role.restaurant_id),
+        where("status", "in", ["new", "preparing", "ready"]));
+
+      onSnapshot(q, async (snap) => {
+        const cols = { new: [], preparing: [], ready: [] };
+        snap.forEach(d => { const o = { id: d.id, ...d.data() }; (cols[o.status] || cols.new).push(o); });
+        for (const [status, orders] of Object.entries(cols)) {
+          const el = document.getElementById("col-" + status);
+          if (orders.length === 0) { el.innerHTML = `<div class="text-slate-400 text-sm">No orders.</div>`; continue; }
+          // Fetch items for each order
+          el.innerHTML = orders.map(o => `
+            <div class="bg-white rounded-xl border border-slate-200 p-3">
+              <div class="flex justify-between text-sm">
+                <div class="font-bold">#${o.display_number ?? o.id.slice(0,5)} · Table ${o.table_number ?? '?'}</div>
+                <div class="text-slate-500">${o.customer_name ?? ''}</div>
+              </div>
+              <div data-items="${o.id}" class="mt-2 text-sm text-slate-600">Loading items…</div>
+              <div class="mt-3 flex gap-2">
+                ${status === "new" ? `<button data-advance="${o.id}" data-to="preparing" class="bg-amber-500 text-white text-sm px-3 py-1.5 rounded-lg">Start preparing</button>` : ""}
+                ${status === "preparing" ? `<button data-advance="${o.id}" data-to="ready" class="bg-emerald-600 text-white text-sm px-3 py-1.5 rounded-lg">Mark ready</button>` : ""}
+                ${status === "ready" ? `<button data-advance="${o.id}" data-to="served" class="bg-slate-700 text-white text-sm px-3 py-1.5 rounded-lg">Served</button>` : ""}
+              </div>
+            </div>`).join("");
+          for (const o of orders) {
+            const itemsSnap = await getDocs(query(collection(db, "order_items"), where("order_id", "==", o.id)));
+            const lines = itemsSnap.docs.map(d => d.data()).map(it => `${it.qty}× ${it.name_snapshot}`).join(", ");
+            const target = el.querySelector(`[data-items="${o.id}"]`);
+            if (target) target.textContent = lines || "(no items)";
+          }
+        }
+        document.querySelectorAll("button[data-advance]").forEach(b => {
+          b.onclick = () => updateDoc(doc(db, "orders", b.dataset.advance), { status: b.dataset.to });
+        });
+      });
+    });
+  </script>
+</body>
+</html>

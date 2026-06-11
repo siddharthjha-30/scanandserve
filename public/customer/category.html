@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Category · Scan &amp; Serve</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50 pb-24">
+  <header class="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-4 flex items-center gap-3">
+    <a href="/customer/menu.html" class="text-slate-700" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+    </a>
+    <div class="flex-1">
+      <div id="cat-name" class="text-xl font-bold text-slate-900">Category</div>
+      <div id="cat-count" class="text-xs text-slate-500"></div>
+    </div>
+  </header>
+
+  <main id="items" class="p-4 space-y-3">
+    <div class="text-center text-slate-500 py-12">Loading…</div>
+  </main>
+
+  <nav class="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 flex justify-around py-3 z-10">
+    <a href="/customer/menu.html" class="text-slate-700" aria-label="Home">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l9 8h-3v9h-4v-6h-4v6H6v-9H3z"/></svg>
+    </a>
+    <a href="/customer/cart.html" class="text-slate-700 relative" aria-label="Cart">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M6 6L5 3H2"/></svg>
+      <span id="cart-count" class="hidden absolute -top-1 -right-2 bg-emerald-600 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5">0</span>
+    </a>
+    <a href="/customer/track.html" class="text-slate-700" aria-label="Profile">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
+    </a>
+  </nav>
+
+  <script type="module">
+    import { requireRestaurant } from "/shared/tenancy.js";
+    import { loadMenu, loadRestaurantSettings } from "/shared/menu.js";
+    import { addToCart, getCart } from "/shared/state.js";
+    import { money, toast } from "/shared/ui.js";
+
+    // Parse category from URL — supports ?=Fast+Food (empty key), ?name=, ?category=
+    function parseCategory() {
+      const raw = window.location.search.replace(/^\?/, "");
+      if (!raw) return "";
+      for (const part of raw.split("&")) {
+        const [k, v = ""] = part.split("=");
+        if (k === "" || k === "name" || k === "category") {
+          return decodeURIComponent(v.replace(/\+/g, " "));
+        }
+      }
+      return decodeURIComponent(raw.replace(/\+/g, " "));
+    }
+
+    const categoryName = parseCategory();
+    const restaurantId = requireRestaurant();
+    document.getElementById("cat-name").textContent = categoryName || "Category";
+
+    function refreshCart() {
+      const c = getCart().reduce((s, i) => s + i.qty, 0);
+      const b = document.getElementById("cart-count");
+      if (c > 0) { b.textContent = c; b.classList.remove("hidden"); }
+      else b.classList.add("hidden");
+    }
+    refreshCart();
+
+    try {
+      const restaurant = await loadRestaurantSettings(restaurantId);
+      const currency = restaurant?._settings?.currency ?? "USD";
+      const { categories, items } = await loadMenu(restaurantId);
+
+      const target = categories.find(
+        (c) => c.name?.toLowerCase() === categoryName.toLowerCase()
+      );
+      const filtered = items.filter((it) =>
+        target ? it.category_id === target.id
+               : (it.category_name || "").toLowerCase() === categoryName.toLowerCase()
+      );
+
+      document.getElementById("cat-count").textContent = `${filtered.length} item${filtered.length === 1 ? "" : "s"}`;
+
+      const main = document.getElementById("items");
+      if (filtered.length === 0) {
+        main.innerHTML = `<div class="text-center text-slate-500 py-12">No items in this category yet.</div>`;
+      } else {
+        main.innerHTML = filtered.map((it) => {
+          const dot = it.is_veg === true
+            ? `<span class="w-4 h-4 rounded-sm border-2 border-emerald-600 flex items-center justify-center"><span class="w-1.5 h-1.5 bg-emerald-600 rounded-full"></span></span>`
+            : it.is_veg === false
+            ? `<span class="w-4 h-4 rounded-sm border-2 border-red-600 flex items-center justify-center"><span class="w-1.5 h-1.5 bg-red-600 rounded-full"></span></span>`
+            : "";
+          return `
+            <div class="bg-white rounded-2xl border border-slate-200 p-3 flex gap-3 items-center">
+              ${it.image_url ? `<img src="${it.image_url}" alt="${it.name}" class="w-20 h-20 rounded-xl object-cover flex-shrink-0"/>` : ""}
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">${dot}<div class="font-semibold text-slate-900 truncate">${it.name}</div></div>
+                ${it.description ? `<div class="text-xs text-slate-500 line-clamp-2 mt-0.5">${it.description}</div>` : ""}
+                <div class="text-sm font-bold text-slate-900 mt-1">${money(it.price, currency)}</div>
+              </div>
+              <button data-id="${it.id}" data-name="${it.name}" data-price="${it.price}"
+                class="add bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-4 py-2 rounded-lg text-sm flex-shrink-0">Add</button>
+            </div>`;
+        }).join("");
+
+        main.querySelectorAll("button.add").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            addToCart({
+              menu_item_id: btn.dataset.id,
+              name: btn.dataset.name,
+              price: Number(btn.dataset.price),
+              qty: 1,
+            });
+            refreshCart();
+            toast(`${btn.dataset.name} added`, "success");
+          });
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      document.getElementById("items").innerHTML =
+        `<div class="text-center text-red-600 py-8">Failed to load. ${e.message}</div>`;
+    }
+  </script>
+</body>
+</html>

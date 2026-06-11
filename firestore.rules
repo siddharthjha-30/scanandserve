@@ -1,0 +1,75 @@
+rules_version = '2';
+
+// ============================================================================
+// SCAFFOLD RULES — NOT PRODUCTION READY
+// ----------------------------------------------------------------------------
+// Before going live you MUST:
+//   * Move staff role + restaurant_id into Firebase Auth custom claims (set
+//     them from a Cloud Function so the client cannot self-promote).
+//   * Validate order totals server-side (Cloud Function trigger that recomputes
+//     subtotal/service/tip from order_items + restaurant settings; reject if
+//     they don't match).
+//   * Add rate limiting (App Check + Cloud Function quotas) for order creates.
+//   * Lock down menu_items / categories writes to owner role only.
+//   * Audit reads — these rules allow public menu reads filtered by
+//     restaurant_id, which is intentional for QR ordering but should be paired
+//     with App Check.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function staffOf(rid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.restaurant_id == rid;
+    }
+    function hasRole(rid, role) {
+      return staffOf(rid)
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    // Restaurants: public read for QR landing; only owner writes.
+    match /restaurants/{rid} {
+      allow read: if true;
+      allow write: if hasRole(rid, 'owner');
+      match /counters/{counterId} {
+        allow read: if staffOf(rid);
+        allow write: if false; // only Cloud Functions
+      }
+    }
+
+    // Menus + categories: public read; staff write.
+    match /categories/{id} {
+      allow read: if true;
+      allow create, update, delete: if staffOf(request.resource.data.restaurant_id)
+                                     || (resource != null && staffOf(resource.data.restaurant_id));
+    }
+    match /menu_items/{id} {
+      allow read: if true;
+      allow create, update, delete: if staffOf(request.resource.data.restaurant_id)
+                                     || (resource != null && staffOf(resource.data.restaurant_id));
+    }
+
+    // Orders: customers can create (no auth required for QR flow); only staff
+    // of that restaurant can read/update. Customers cannot list other orders.
+    match /orders/{oid} {
+      allow create: if request.resource.data.restaurant_id is string
+                    && request.resource.data.status == 'new';
+      allow read, update: if staffOf(resource.data.restaurant_id);
+      allow delete: if hasRole(resource.data.restaurant_id, 'owner');
+    }
+
+    match /order_items/{id} {
+      allow create: if request.resource.data.restaurant_id is string;
+      allow read, update, delete: if staffOf(resource.data.restaurant_id);
+    }
+
+    // Users: each user can read their own role doc.
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false; // provisioned out-of-band by owner / admin tool
+    }
+  }
+}

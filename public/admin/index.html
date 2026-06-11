@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sign in · Scan &amp; Serve</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+    <div
+      class="w-full max-w-sm bg-white rounded-2xl border border-slate-200 p-6"
+    >
+      <h1 class="text-xl font-bold text-slate-900">Staff / Owner sign in</h1>
+      <p class="text-sm text-slate-500 mt-1">Scan &amp; Serve admin</p>
+
+      <div id="signed-out" class="mt-4 space-y-3">
+        <button
+          id="google"
+          class="w-full border border-slate-300 rounded-lg py-2 text-sm font-medium hover:bg-slate-50"
+        >
+          Continue with Google
+        </button>
+        <div class="text-center text-xs text-slate-400">or</div>
+        <input
+          id="email"
+          type="email"
+          placeholder="Email"
+          class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+        />
+        <input
+          id="pw"
+          type="password"
+          placeholder="Password"
+          class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+        />
+        <div class="flex gap-2">
+          <button
+            id="signin"
+            class="flex-1 bg-slate-900 text-white rounded-lg py-2 text-sm"
+          >
+            Sign in
+          </button>
+          <button
+            id="signup"
+            class="flex-1 border border-slate-300 rounded-lg py-2 text-sm"
+          >
+            Create account
+          </button>
+        </div>
+        <div id="err" class="text-red-600 text-xs"></div>
+      </div>
+
+      <div id="signed-in" class="mt-4 hidden space-y-3">
+        <div class="text-sm text-slate-700"><span id="who-email"></span></div>
+        <div id="role-info" class="text-xs text-slate-500"></div>
+        <div class="grid grid-cols-2 gap-2 text-sm">
+          <a
+            href="/admin/menu.html"
+            class="bg-slate-900 text-white text-center py-2 rounded-lg"
+            >Menu</a
+          >
+          <a
+            href="/admin/settings.html"
+            class="bg-slate-900 text-white text-center py-2 rounded-lg"
+            >Settings</a
+          >
+          <a
+            href="/staff/chef.html"
+            class="border border-slate-300 text-center py-2 rounded-lg"
+            >Kitchen</a
+          >
+          <a
+            href="/staff/waiter.html"
+            class="border border-slate-300 text-center py-2 rounded-lg"
+            >Waiter</a
+          >
+          <a
+            href="/admin/subscription.html"
+            class="col-span-2 border border-slate-300 text-center py-2 rounded-lg"
+            >Subscription</a
+          >
+        </div>
+        <button id="signout" class="w-full text-slate-600 underline text-sm">
+          Sign out
+        </button>
+      </div>
+    </div>
+
+    <script type="module">
+      import {
+        signInEmail,
+        signUpEmail,
+        signInGoogle,
+        signOutUser,
+        onUser,
+        loadUserRole,
+      } from "/shared/auth.js";
+      const err = (m) => {
+        document.getElementById("err").textContent = m;
+      };
+
+      document.getElementById("google").onclick = () =>
+        signInGoogle().catch((e) => err(e.message));
+      document.getElementById("signin").onclick = () =>
+        signInEmail(email.value, pw.value).catch((e) => err(e.message));
+      document.getElementById("signup").onclick = () =>
+        signUpEmail(email.value, pw.value).catch((e) => err(e.message));
+      document.getElementById("signout").onclick = () => signOutUser();
+
+      onUser(async (u) => {
+        const so = document.getElementById("signed-out");
+        const si = document.getElementById("signed-in");
+        if (u) {
+          so.classList.add("hidden");
+          si.classList.remove("hidden");
+          document.getElementById("who-email").textContent = u.email;
+          const role = await loadUserRole(u.uid);
+          const restaurantDisplay = role?.restaurant_name ? role.restaurant_name : (role?.restaurant_id || "Unknown");
+          document.getElementById("role-info").textContent = role
+            ? `Restaurant: ${restaurantDisplay} · Role: ${role.role}`
+            : "No role configured. Create a users/{uid} doc with { restaurant_id, role }.";
+        } else {
+          so.classList.remove("hidden");
+          si.classList.add("hidden");
+        }
+      });
+    </script>
+  </body>
+</html>

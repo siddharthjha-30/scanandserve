@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Menu · Scan &amp; Serve</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50 pb-24">
+  <header class="sticky top-0 z-10 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between">
+    <div class="text-2xl font-extrabold tracking-wide text-slate-900">MENU</div>
+    <div id="greeting" class="text-slate-600 text-base">Good Evening</div>
+  </header>
+
+  <div class="px-4 pt-4">
+    <input id="search" type="text" placeholder="What would you like to eat?"
+      class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+  </div>
+
+  <main id="categories" class="p-4 grid grid-cols-2 gap-3">
+    <div class="col-span-2 text-center text-slate-500 py-12">Loading menu…</div>
+  </main>
+
+  <nav class="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 flex justify-around py-3 z-10">
+    <a href="/customer/menu.html" class="text-emerald-600" aria-label="Home">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l9 8h-3v9h-4v-6h-4v6H6v-9H3z"/></svg>
+    </a>
+    <a href="/customer/cart.html" class="text-slate-700 relative" aria-label="Cart">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M6 6L5 3H2"/></svg>
+      <span id="cart-count" class="hidden absolute -top-1 -right-2 bg-emerald-600 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5">0</span>
+    </a>
+    <a href="/customer/track.html" class="text-slate-700" aria-label="Profile">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
+    </a>
+  </nav>
+
+  <script type="module">
+    import { requireRestaurant } from "/shared/tenancy.js";
+    import { loadMenu, loadRestaurantSettings } from "/shared/menu.js";
+    import { getCart } from "/shared/state.js";
+
+    const restaurantId = requireRestaurant();
+
+    // Greeting
+    const hr = new Date().getHours();
+    const part = hr < 12 ? "Morning" : hr < 17 ? "Afternoon" : "Evening";
+    let name = "";
+    try { name = JSON.parse(localStorage.getItem("ss.customer_name") || "\"\""); } catch {}
+    document.getElementById("greeting").textContent = `Good ${part}${name ? ", " + name : ""}`;
+
+    // Cart count
+    const cartCount = getCart().reduce((s, i) => s + i.qty, 0);
+    const badge = document.getElementById("cart-count");
+    if (cartCount > 0) { badge.textContent = cartCount; badge.classList.remove("hidden"); }
+
+    const placeholder = (seed) =>
+      `https://images.unsplash.com/photo-${seed}?auto=format&fit=crop&w=600&q=60`;
+    const fallbackImg = "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=600&q=60";
+
+    try {
+      await loadRestaurantSettings(restaurantId);
+      const { categories, items } = await loadMenu(restaurantId);
+      const grid = document.getElementById("categories");
+
+      // Group items by category
+      const buckets = new Map();
+      for (const c of categories) buckets.set(c.id, { id: c.id, name: c.name, image: c.image_url, items: [] });
+      buckets.set("_other", { id: "_other", name: "Other", image: null, items: [] });
+      for (const it of items) {
+        const key = buckets.has(it.category_id) ? it.category_id : "_other";
+        buckets.get(key).items.push(it);
+      }
+
+      const visible = [...buckets.values()].filter((g) => g.items.length > 0);
+      if (visible.length === 0) {
+        grid.innerHTML = `<div class="col-span-2 text-center text-slate-500 py-12">No menu items yet.</div>`;
+      } else {
+        grid.innerHTML = visible.map((g) => {
+          const veg = g.items.filter((i) => i.is_veg === true).length;
+          const nonveg = g.items.filter((i) => i.is_veg === false).length;
+          const img = g.image || g.items.find((i) => i.image_url)?.image_url || fallbackImg;
+          const href = `/customer/category.html?=${encodeURIComponent(g.name)}`;
+          return `
+            <a href="${href}" data-name="${g.name.toLowerCase()}" class="cat-card bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 block">
+              <div class="relative">
+                <img src="${img}" alt="${g.name}" class="w-full h-32 object-cover" onerror="this.src='${fallbackImg}'"/>
+                <span class="absolute top-2 right-2 bg-white/90 text-slate-800 text-xs font-medium px-2 py-1 rounded-full">${g.items.length} items</span>
+              </div>
+              <div class="p-3">
+                <div class="font-semibold text-slate-900 text-base mb-2">${g.name}</div>
+                <div class="flex gap-2">
+                  ${veg > 0 ? `<span class="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-medium px-2 py-1 rounded-full"><span class="w-3 h-3 rounded-full border border-emerald-600 flex items-center justify-center"><span class="w-1.5 h-1.5 bg-emerald-600 rounded-full"></span></span>${veg}</span>` : ""}
+                  ${nonveg > 0 ? `<span class="inline-flex items-center gap-1 bg-red-50 text-red-700 text-xs font-medium px-2 py-1 rounded-full"><span class="w-3 h-3 rounded-sm border border-red-600 flex items-center justify-center"><span class="w-1.5 h-1.5 bg-red-600 rounded-sm"></span></span>${nonveg}</span>` : ""}
+                  ${veg === 0 && nonveg === 0 ? `<span class="text-xs text-slate-500">${g.items.length} dishes</span>` : ""}
+                </div>
+              </div>
+            </a>`;
+        }).join("");
+
+        const search = document.getElementById("search");
+        search.addEventListener("input", () => {
+          const q = search.value.trim().toLowerCase();
+          grid.querySelectorAll(".cat-card").forEach((el) => {
+            el.style.display = !q || el.dataset.name.includes(q) ? "" : "none";
+          });
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      document.getElementById("categories").innerHTML =
+        `<div class="col-span-2 text-center text-red-600 py-8">Failed to load menu. ${e.message}</div>`;
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Scan &amp; Serve</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+  <div class="text-center max-w-sm">
+    <h1 class="text-2xl font-bold text-slate-900">Welcome</h1>
+    <p id="msg" class="mt-2 text-slate-600">Setting up your table…</p>
+  </div>
+  <script type="module">
+    import { captureFromUrl } from "/shared/tenancy.js";
+    const { restaurantId, tableNumber } = captureFromUrl();
+    const msg = document.getElementById("msg");
+    if (restaurantId) {
+      msg.textContent = `Table ${tableNumber ?? "?"} · loading menu…`;
+      setTimeout(() => { window.location.href = "/customer/menu.html"; }, 400);
+    } else {
+      msg.textContent = "No restaurant in URL. Try ?restaurant=demo123&table=7";
+    }
+  </script>
+</body>
+</html>

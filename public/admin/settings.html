@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Restaurant settings</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50">
+  <header class="bg-white border-b border-slate-200 px-4 py-3 flex justify-between">
+    <div class="font-bold">Settings</div>
+    <a href="/admin/index.html" class="text-sm text-slate-600">&larr; Back</a>
+  </header>
+  <main class="p-4 max-w-md mx-auto">
+    <form id="f" class="bg-white rounded-xl border border-slate-200 p-4 space-y-3 text-sm">
+      <label class="block">Restaurant name<input id="name" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2" /></label>
+      <label class="block">Currency<input id="currency" placeholder="USD" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2" /></label>
+      <label class="block">Service charge %<input id="svc" type="number" step="0.1" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2" /></label>
+      <label class="block">Rounding rule
+        <select id="round" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">
+          <option value="none">None</option>
+          <option value="nearest_5">Round total to nearest 5</option>
+        </select>
+      </label>
+      <button class="bg-slate-900 text-white rounded-lg py-2 w-full">Save</button>
+      <div id="msg" class="text-emerald-700 text-xs"></div>
+    </form>
+  </main>
+
+  <script type="module">
+    import { onUser, loadUserRole } from "/shared/auth.js";
+    import { db } from "/shared/firebase.js";
+    import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    let rid = null;
+    onUser(async (u) => {
+      if (!u) { location.href = "/admin/index.html"; return; }
+      const role = await loadUserRole(u.uid);
+      rid = role?.restaurant_id;
+      if (!rid) { document.body.innerHTML = "<div class='p-8'>No restaurant assigned.</div>"; return; }
+      const snap = await getDoc(doc(db, "restaurants", rid));
+      const data = snap.exists() ? snap.data() : {};
+      document.getElementById("name").value = data.name ?? "";
+      document.getElementById("currency").value = data.settings?.currency ?? "USD";
+      document.getElementById("svc").value = data.settings?.service_charge_pct ?? 0;
+      document.getElementById("round").value = data.settings?.rounding_rule ?? "none";
+    });
+
+    document.getElementById("f").onsubmit = async (e) => {
+      e.preventDefault();
+      if (!rid) return;
+      await setDoc(doc(db, "restaurants", rid), {
+        name: document.getElementById("name").value,
+        settings: {
+          currency: document.getElementById("currency").value || "USD",
+          service_charge_pct: Number(document.getElementById("svc").value) || 0,
+          rounding_rule: document.getElementById("round").value,
+        },
+      }, { merge: true });
+      document.getElementById("msg").textContent = "Saved.";
+    };
+  </script>
+</body>
+</html>

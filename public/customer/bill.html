@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bill</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50 p-6">
+  <div class="max-w-md mx-auto bg-white rounded-2xl border border-slate-200 p-6">
+    <h1 class="text-xl font-bold text-slate-900">Receipt</h1>
+    <div id="meta" class="text-xs text-slate-500 mt-1"></div>
+    <div id="body" class="mt-4 text-sm">Loading…</div>
+    <a href="/customer/track.html" class="mt-6 inline-block text-slate-600 text-sm">&larr; Back to order</a>
+  </div>
+  <script type="module">
+    import { loadBill } from "/shared/bill.js";
+    import { getLastOrderId, getCachedSettings } from "/shared/state.js";
+    import { money } from "/shared/ui.js";
+
+    const id = new URLSearchParams(location.search).get("id") || getLastOrderId();
+    if (!id) { document.getElementById("body").textContent = "No order."; }
+    else {
+      const { local, order, items } = await loadBill(id);
+      const currency = order?.totals?.currency || getCachedSettings().currency || "USD";
+      document.getElementById("meta").textContent = `Order #${id}${local ? " · saved offline" : ""}`;
+      if (!order) { document.getElementById("body").textContent = "Order not found."; }
+      else {
+        const t = order.totals || {};
+        document.getElementById("body").innerHTML = `
+          <ul class="divide-y divide-slate-200">${items.map(i => `
+            <li class="py-2 flex justify-between"><span>${i.qty}× ${i.name_snapshot || i.name}</span><span>${money((i.price_snapshot || i.price) * i.qty, currency)}</span></li>
+          `).join("")}</ul>
+          <div class="mt-4 space-y-1 text-slate-700">
+            <div class="flex justify-between"><span>Subtotal</span><span>${money(t.subtotal, currency)}</span></div>
+            ${t.service_charge ? `<div class="flex justify-between"><span>Service</span><span>${money(t.service_charge, currency)}</span></div>` : ""}
+            ${t.tip ? `<div class="flex justify-between"><span>Tip</span><span>${money(t.tip, currency)}</span></div>` : ""}
+            ${t.rounding_adjustment ? `<div class="flex justify-between"><span>Rounding</span><span>${money(t.rounding_adjustment, currency)}</span></div>` : ""}
+            <div class="flex justify-between font-bold text-base pt-2 border-t border-slate-200"><span>Total</span><span>${money(t.total, currency)}</span></div>
+          </div>
+          ${local ? `<div class="mt-4 text-amber-700 text-xs">This bill was generated offline. Please confirm with staff.</div>` : ""}`;
+      }
+    }
+  </script>
+</body>
+</html>
